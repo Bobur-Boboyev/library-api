@@ -10,9 +10,5 @@ def get_db() -> Generator[Session, None, None]:
 
     try:
         yield db
-    except:
+    finally:
         db.close()
-
-
-def get_session() -> Session:
-    return SessionLocal()

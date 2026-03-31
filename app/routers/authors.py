@@ -1,8 +1,9 @@
 from typing import Annotated, List
 
-from fastapi import APIRouter, Query, Path, HTTPException
+from fastapi import APIRouter, Query, Path, HTTPException, Depends
+from sqlalchemy.orm import Session
 
-from app.dependencies import get_db, get_session
+from app.dependencies import get_db
 from app.crud.author import (
     get_authors,
     create_author,
@@ -17,30 +18,27 @@ router = APIRouter(tags=["authors"])
 
 @router.get("/api/authors", response_model=List[AuthorResponse], status_code=200)
 async def get_authors_view(
+    db: Annotated[Session, Depends(get_db)],
     search: Annotated[str, Query()] = "",
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=0, le=100)] = 20,
 ):
-    # db = next(get_db())
-    db = get_session()
     return get_authors(db, search, skip, limit)
 
 
 @router.post("/api/authors", response_model=AuthorResponse)
-async def create_author_view(data: AuthorCreate):
-    # db = next(get_db())
-    db = get_session()
-
+async def create_author_view(
+    db: Annotated[Session, Depends(get_db)], data: AuthorCreate
+):
     author = create_author(db, data)
 
     return author
 
 
 @router.get("/api/authors/{id}", response_model=AuthorResponse)
-async def get_author_view(id: Annotated[int, Path(ge=0)]):
-    # db = next(get_db())
-    db = get_session()
-
+async def get_author_view(
+    id: Annotated[int, Path(ge=0)], db: Annotated[Session, Depends(get_db)]
+):
     author = get_author(db, id)
     if author:
         return author
@@ -51,10 +49,9 @@ async def get_author_view(id: Annotated[int, Path(ge=0)]):
 @router.patch("/api/authors/{id}", response_model=AuthorResponse)
 async def update_author_view(
     id: Annotated[int, Path(ge=0)],
+    db: Annotated[Session, Depends(get_db)],
     data: AuthorUpdate,
 ):
-    db = get_session()
-
     existing_author = get_author(db, id)
     if existing_author is None:
         raise HTTPException(status_code=404, detail="author not found.")
@@ -71,9 +68,9 @@ async def update_author_view(
 
 
 @router.delete("/api/authors/{id}")
-async def delete_author_view(id: Annotated[int, Path(ge=0)]):
-    db = get_session()
-
+async def delete_author_view(
+    id: Annotated[int, Path(ge=0)], db: Annotated[Session, Depends(get_db)]
+):
     existing_author = get_author(db, id)
     if existing_author is None:
         raise HTTPException(status_code=404, detail="author not found.")
