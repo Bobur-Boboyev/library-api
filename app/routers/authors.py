@@ -1,64 +1,60 @@
-from typing import Annotated, List
+from typing import Annotated
 
-from fastapi import APIRouter, Query, Path, HTTPException, Depends
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Query, Path, HTTPException, Body, status
 
 from app.dependencies import get_db
 from app.crud.author import (
     get_authors,
     create_author,
-    get_author,
-    update_author,
-    delete_author,
+    get_author_by_id,
+    update_author_by_id,
+    delete_author_by_id,
+    get_author_books,
 )
-from app.schemas.author import AuthorResponse, AuthorCreate, AuthorUpdate
+from app.schemas.author import (
+    AuthorResponse,
+    AuthorsResponse,
+    Authorcreate,
+    AuthorUpdate,
+    AuthorBookResponse,
+    AuthorBooksResponse,
+)
+from app.schemas.genre import GenreResponse
+from app.models import Genre
 
 router = APIRouter(tags=["authors"])
 
 
-@router.get("/api/authors", response_model=List[AuthorResponse], status_code=200)
+@router.get("/api/authors", response_model=AuthorsResponse, status_code=200)
 async def get_authors_view(
-    db: Annotated[Session, Depends(get_db)],
     search: Annotated[str, Query()] = "",
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=0, le=100)] = 20,
 ):
-    return get_authors(db, search, skip, limit)
+    db = next(get_db())
+
+    authors = get_authors(db, search, skip, limit)
+
+    response = AuthorsResponse(
+        limit=limit, skip=skip, search=search, count=len(authors), result=authors
+    )
+
+    return response
 
 
-@router.post("/api/authors", response_model=AuthorResponse)
-async def create_author_view(
-    db: Annotated[Session, Depends(get_db)], data: AuthorCreate
-):
-    author = create_author(db, data)
+@router.post("/api/authors", status_code=201)
+async def create_author_view(data: Annotated[Authorcreate, Body]):
+    db = next(get_db())
 
-    return author
+    author = create_author(
+        db=db,
+        first_name=data.first_name,
+        last_name=data.last_name,
+        bio=data.bio,
+        born_date=data.born_date,
+    )
 
-
-@router.get("/api/authors/{id}", response_model=AuthorResponse)
-async def get_author_view(
-    id: Annotated[int, Path(ge=0)], db: Annotated[Session, Depends(get_db)]
-):
-    author = get_author(db, id)
-    if author:
-        return author
-    else:
-        raise HTTPException(status_code=404, detail="author not found.")
-
-
-@router.patch("/api/authors/{id}", response_model=AuthorResponse)
-async def update_author_view(
-    id: Annotated[int, Path(ge=0)],
-    db: Annotated[Session, Depends(get_db)],
-    data: AuthorUpdate,
-):
-    existing_author = get_author(db, id)
-    if existing_author is None:
-        raise HTTPException(status_code=404, detail="author not found.")
-
-    author = update_author(db, existing_author, data)
-
-    return AuthorResponse(
+    response = AuthorResponse(
         id=author.id,
         first_name=author.first_name,
         last_name=author.last_name,
@@ -66,15 +62,96 @@ async def update_author_view(
         born_date=author.born_date,
     )
 
+    return response
 
-@router.delete("/api/authors/{id}")
-async def delete_author_view(
-    id: Annotated[int, Path(ge=0)], db: Annotated[Session, Depends(get_db)]
+
+@router.get("/api/authors/{id}")
+async def get_author_by_id_view(id: Annotated[int, Path(gt=0)]):
+    db = next(get_db())
+
+    author = get_author_by_id(db=db, id=id)
+
+    response = AuthorResponse(
+        id=author.id,
+        first_name=author.first_name,
+        last_name=author.last_name,
+        bio=author.bio,
+        born_date=author.born_date,
+    )
+
+    return response
+
+
+@router.patch("/api/authors/{id}")
+async def update_author_by_id_view(
+    id: Annotated[int, Path(gt=0)], data: Annotated[AuthorUpdate | None, Body] = None
 ):
-    existing_author = get_author(db, id)
-    if existing_author is None:
-        raise HTTPException(status_code=404, detail="author not found.")
+    db = next(get_db())
 
-    delete_author(db, existing_author)
+    author = update_author_by_id(
+        db=db,
+        id=id,
+        first_name=data.first_name,
+        last_name=data.last_name,
+        bio=data.bio,
+        born_date=data.born_date,
+    )
 
-    return {"message": "author deleted."}
+    response = AuthorResponse(
+        id=author.id,
+        first_name=author.first_name,
+        last_name=author.last_name,
+        bio=author.bio,
+        born_date=author.born_date,
+    )
+
+    return response
+
+
+@router.delete("/api/authors/{id}", status_code=204)
+async def delete_author_by_id_view(id: Annotated[int, Path(gt=0)]):
+    db = next(get_db())
+
+    author = delete_author_by_id(db=db, id=id)
+
+
+@router.get("/api/authors/{id}/books")
+async def get_author_books_view(
+    id: Annotated[int, Path(gt=0)],
+    skip: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=0, le=100)] = 20,
+):
+    db = next(get_db())
+
+    author, books = get_author_books(db=db, id=id, skip=skip, limit=limit)
+
+    author = AuthorResponse(
+        id=author.id,
+        first_name=author.first_name,
+        last_name=author.last_name,
+        bio=author.bio,
+        born_date=author.born_date,
+    )
+
+    book_responses = []
+    for book in books:
+        book_genres = book.book_genres
+        genres: list[Genre] = [b.genre for b in book_genres]
+
+        genres = [
+            GenreResponse(id=g.id, name=g.name, description=g.description)
+            for g in genres
+        ]
+
+        book_response = AuthorBookResponse(
+            id=book.id,
+            title=book.title,
+            published_year=book.published_year,
+            author=author,
+            genres=genres,
+        )
+        book_responses.append(book_response)
+
+    return AuthorBooksResponse(
+        limit=limit, skip=skip, count=len(books), result=book_responses
+    )

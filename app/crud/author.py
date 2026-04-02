@@ -1,10 +1,12 @@
 from typing import List
+from datetime import date
 
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
+from fastapi import HTTPException
 
 from app.models.author import Author
-from app.schemas.author import AuthorCreate, AuthorUpdate
+from app.models.book import Book
 
 
 def get_authors(
@@ -27,12 +29,15 @@ def get_authors(
     return authors
 
 
-def create_author(db: Session, data: AuthorCreate) -> Author:
+def create_author(
+    db: Session,
+    first_name: str,
+    last_name: str,
+    bio: str = None,
+    born_date: date = None,
+) -> Author:
     author = Author(
-        first_name=data.first_name,
-        last_name=data.last_name,
-        bio=data.bio,
-        born_date=data.born_date,
+        first_name=first_name, last_name=last_name, bio=bio, born_date=born_date
     )
 
     db.add(author)
@@ -42,30 +47,57 @@ def create_author(db: Session, data: AuthorCreate) -> Author:
     return author
 
 
-def get_author(db: Session, id: int) -> Author | None:
-    author = db.query(Author).get(id)
+def get_author_by_id(db: Session, id: int) -> Author:
+    author = db.query(Author).filter(Author.id == id).first()
+
+    if author is None:
+        raise HTTPException(
+            status_code=404, detail="Author with given ID does not exist"
+        )
 
     return author
 
 
-def update_author(db: Session, existing_author: Author, data: AuthorUpdate) -> Author:
-    existing_author.first_name = (
-        data.first_name if data.first_name else existing_author.first_name
-    )
-    existing_author.last_name = (
-        data.last_name if data.last_name else existing_author.last_name
-    )
-    existing_author.bio = data.bio if data.bio else existing_author.bio
-    existing_author.born_date = (
-        data.born_date if data.born_date else existing_author.born_date
-    )
+def update_author_by_id(
+    db: Session,
+    id: int,
+    first_name: str | None,
+    last_name: str | None,
+    bio: str | None,
+    born_date: date | None,
+) -> Author:
+    author = get_author_by_id(db=db, id=id)
 
-    db.add(existing_author)
+    if first_name:
+        author.first_name = first_name
+    if last_name:
+        author.last_name = last_name
+    if bio:
+        author.bio = bio
+    if born_date:
+        author.born_date = born_date
+
+    db.add(author)
+    db.commit()
+    db.refresh(author)
+
+    return author
+
+
+def delete_author_by_id(db: Session, id: int) -> True:
+    author = get_author_by_id(db, id)
+
+    db.delete(author)
     db.commit()
 
-    return existing_author
+    return True
 
 
-def delete_author(db: Session, existing_author: Author) -> None:
-    db.delete(existing_author)
-    db.commit()
+def get_author_books(
+    db: Session, id: int, skip: int = 0, limit: int = 20
+) -> tuple[Author, Book]:
+    author = get_author_by_id(db, id)
+
+    books = db.query(Book).filter(Book.author_id == id).offset(skip).limit(limit).all()
+
+    return author, books
