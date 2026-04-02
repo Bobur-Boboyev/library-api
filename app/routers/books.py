@@ -73,7 +73,9 @@ async def get_books_view(
 
 
 @router.post("/api/books", response_model=BookItemResponse, status_code=201)
-async def create_book_view(db: Annotated[Session, Depends(get_db)], data: Annotated[CreateBook, Body()]):
+async def create_book_view(
+    db: Annotated[Session, Depends(get_db)], data: Annotated[CreateBook, Body()]
+):
     book = create_book(
         db=db,
         title=data.title,
@@ -166,6 +168,5 @@ async def update_book_by_id_view(
 
 @router.delete("/api/books/{id}", status_code=204)
 async def delete_book_by_id_view(id: Annotated[int, Path(gt=0)]):
-
     db = next(get_db())
     delete_book_by_id(db, id)
