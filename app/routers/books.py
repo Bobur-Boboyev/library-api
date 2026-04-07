@@ -1,6 +1,7 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Query, Path, Body, Depends
+from fastapi import APIRouter, Query, Path, Body, Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.dependencies import get_db
@@ -14,12 +15,17 @@ from app.crud.book import (
 from app.schemas.book import BookListResponse, BookItemResponse, CreateBook, UpdateBook
 from app.schemas.genre import GenreResponse
 from app.schemas.author import AuthorResponse
+from app.security import verify_token
 
 router = APIRouter(tags=["books"])
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 
 @router.get("/api/books", response_model=BookListResponse, status_code=200)
 async def get_books_view(
+    token: Annotated[str, Depends(oauth2_scheme)],
+    db: Annotated[Session, Depends(get_db)],
     search: Annotated[str, Query()] = "",
     author_id: Annotated[int | None, Query()] = None,
     genre_id: Annotated[int | None, Query()] = None,
@@ -28,7 +34,10 @@ async def get_books_view(
     skip: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(ge=0, le=100)] = 20,
 ):
-    db = next(get_db())
+    payload = verify_token(token)
+
+    if payload is None:
+        raise HTTPException(status_code=401, detail="invalid token.")
 
     books = get_books(
         db=db,
